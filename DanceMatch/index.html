@@ -1,0 +1,28 @@
+﻿<!DOCTYPE html>
+<html ng-app="DanceMatch">
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <link rel="stylesheet" href="Content/bootstrap.min.css" />
+</head>
+<body>
+    {{"Hello"}}
+    <div ng-controller="dmMenuController as menu">
+        <ng-switch on="menu.dmAuth.authenticated">
+            <a ng-switch-when="false" href="#" class="btn btn-primary" ng-click="menu.dmAuth.login($event)">
+                <span>Login</span>
+            </a>
+            <a ng-switch-when="true" href="#" class="btn btn-primary" ng-click="menu.dmAuth.logout($event)" target="_top">
+                <span>Logout</span>
+            </a>
+        </ng-switch>
+        <pre>{{menu.dmAuth.user}}</pre>
+        <pre>{{menu.dmAuth.authenticated}}</pre>
+    </div>
+    <script src="Scripts/angular.min.js"></script>
+    <script src="Scripts/angular-route.min.js"></script>
+    <script src="Scripts/angular-animate.min.js"></script>
+    <script src="Scripts/app/dancematch.min.js"></script>
+    <script src="//connect.facebook.net/en_US/sdk.js"></script>
+</body>
+</html>
