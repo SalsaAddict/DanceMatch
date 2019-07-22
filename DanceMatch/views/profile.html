@@ -1,0 +1,75 @@
+﻿<div class="container">
+    <form>
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Demographics</h5>
+                <h6 class="card-subtitle">About you</h6>
+                <br />
+                <div class="form-group row">
+                    <label for="roleId" class="col-sm-3 col-form-label">Preferred Role</label>
+                    <div class="col-sm-9">
+                        <select ng-model="profile.roleId" class="form-control" required>
+                            <option></option>
+                            <option ng-value="0">Leader</option>
+                            <option ng-value="1">Follower</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label for="roleId" class="col-sm-3 col-form-label">Age Group</label>
+                    <div class="col-sm-9">
+                        <select ng-model="profile.ageId" class="form-control" required>
+                            <option></option>
+                            <option ng-repeat="age in ages | orderBy: 'id'" ng-value="age.id" ng-bind="age.description"></option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label for="roleId" class="col-sm-3 col-form-label">Country of Residence</label>
+                    <div class="col-sm-9">
+                        <select ng-model="profile.countryId" class="form-control" required>
+                            <option></option>
+                            <option ng-repeat="country in countries | orderBy: 'name'" ng-value="country.id" ng-bind="country.name"></option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <br />
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Qualities</h5>
+                <h6 class="card-subtitle">What qualities are important to you in a dance partner?</h6>
+                <br />
+                <table class="table table-bordered rating">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Not Important</th>
+                            <th>Important</th>
+                            <th>Very Important</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr ng-repeat="quality in qualities | orderBy: 'description'">
+                            <th ng-bind="quality.description" ng-class="{
+                    'text-danger': quality.ratingId === -1,
+                    'text-warning': quality.ratingId === 0,
+                    'text-success': quality.ratingId === 1
+                    }"></th>
+                            <td class="text-center" ng-click="quality.ratingId=-1">
+                                <i class="fa fa-fw" ng-class="{ 'fa-square-o': quality.ratingId !== -1, 'fa-times text-danger': quality.ratingId === -1 }"></i>
+                            </td>
+                            <td class="text-center" ng-click="quality.ratingId=0">
+                                <i class="fa fa-fw" ng-class="{ 'fa-square-o': quality.ratingId !== 0, 'fa-check text-warning': quality.ratingId === 0 }"></i>
+                            </td>
+                            <td class="text-center" ng-click="quality.ratingId=1">
+                                <i class="fa fa-fw" ng-class="{ 'fa-square-o': quality.ratingId !== 1, 'fa-check text-success': quality.ratingId === 1 }"></i>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </form>
+</div>

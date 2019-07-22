@@ -7,10 +7,15 @@ var DanceMatch;
     DanceMatch.fbAppId = "478292336279902";
     DanceMatch.fbGraphApiVersion = "v3.3";
     function Config() {
-        var config = function ($logProvider) {
+        var config = function ($routeProvider, $logProvider) {
+            $routeProvider
+                .when("/home", { name: "home", templateUrl: "views/home.html" })
+                .when("/profile/:userId", { name: "profile", templateUrl: "views/profile.html", controller: Profile.Controller, controllerAs: "ctrl" })
+                .otherwise({ redirectTo: "/home" })
+                .caseInsensitiveMatch = true;
             $logProvider.debugEnabled(true);
         };
-        config.$inject = ["$logProvider"];
+        config.$inject = ["$routeProvider", "$logProvider"];
         return config;
     }
     DanceMatch.Config = Config;
@@ -31,15 +36,30 @@ var DanceMatch;
     var Database;
     (function (Database) {
         var Service = /** @class */ (function () {
-            function Service($http, $q, $log) {
+            function Service($http, $q, $routeParams, $log) {
                 this.$http = $http;
                 this.$q = $q;
+                this.$routeParams = $routeParams;
                 this.$log = $log;
             }
-            Service.prototype.execute = function (name, parameters) {
+            Service.prototype.execute = function (name, routeParams, parameters) {
                 var _this = this;
+                if (routeParams === void 0) { routeParams = true; }
                 var deferred = this.$q.defer();
-                var procedure = { name: name, parameters: parameters };
+                var procedure = { name: name, parameters: {} };
+                if (angular.isArray(routeParams)) {
+                    angular.forEach(routeParams, function (name) {
+                        procedure.parameters[name] = _this.$routeParams[name];
+                    });
+                }
+                else if (routeParams === true) {
+                    angular.forEach(this.$routeParams, function (value, key) {
+                        procedure.parameters[key] = value;
+                    });
+                }
+                if (angular.isObject(parameters)) {
+                    angular.extend(procedure.parameters, parameters);
+                }
                 this.$http.post("execute.ashx", procedure).then(function (response) {
                     _this.$log.debug("dm:execute:success", procedure, response);
                     deferred.resolve(response.data);
@@ -50,7 +70,7 @@ var DanceMatch;
                 });
                 return deferred.promise;
             };
-            Service.$inject = ["$http", "$q", "$log"];
+            Service.$inject = ["$http", "$q", "$routeParams", "$log"];
             return Service;
         }());
         Database.Service = Service;
@@ -58,21 +78,18 @@ var DanceMatch;
     var Authentication;
     (function (Authentication) {
         var Service = /** @class */ (function () {
-            function Service($document, $window, dmDatabase, $log) {
+            function Service($rootScope, $window, dmDatabase, $log) {
                 var _this = this;
-                this.$document = $document;
-                this.$window = $window;
-                this.dmDatabase = dmDatabase;
                 this.$log = $log;
                 $window.fbAsyncInit = function () {
-                    FB.init({ appId: DanceMatch.fbAppId, status: true, xfbml: true, version: DanceMatch.fbGraphApiVersion });
+                    FB.init({ appId: DanceMatch.fbAppId, version: DanceMatch.fbGraphApiVersion, status: true });
                     FB.Event.subscribe('auth.authResponseChange', function (authResponse) {
                         _this.$log.debug("dm:fb:authResponse", authResponse);
                         try {
                             if (authResponse.status === "connected") {
                                 FB.api("/me", { fields: ["id", "name"] }, function (response) {
                                     _this.$log.debug("dm:fb:me", response);
-                                    dmDatabase.execute("Login", response).then(function () { _this._user = response; }, function () { delete _this._user; });
+                                    dmDatabase.execute("Login", false, response).then(function () { _this._user = response; }, function () { delete _this._user; });
                                 });
                             }
                             else {
@@ -81,6 +98,9 @@ var DanceMatch;
                         }
                         catch (ex) {
                             delete _this._user;
+                        }
+                        finally {
+                            $rootScope.$apply();
                         }
                     });
                     $log.debug("dm:fb:init");
@@ -96,9 +116,14 @@ var DanceMatch;
                 enumerable: true,
                 configurable: true
             });
-            Service.prototype.login = function (event) { cancel(event); FB.login(angular.noop); };
-            Service.prototype.logout = function (event) { cancel(event); FB.logout(angular.noop); };
-            Service.$inject = ["$document", "$window", "dmDatabase", "$log"];
+            Service.prototype.toggle = function (event) {
+                cancel(event);
+                if (this.authenticated)
+                    FB.logout(angular.noop);
+                else
+                    FB.login(angular.noop);
+            };
+            Service.$inject = ["$rootScope", "$window", "dmDatabase", "$log"];
             return Service;
         }());
         Authentication.Service = Service;
@@ -115,6 +140,31 @@ var DanceMatch;
         }());
         Menu.Controller = Controller;
     })(Menu = DanceMatch.Menu || (DanceMatch.Menu = {}));
+    var Profile;
+    (function (Profile) {
+        var Controller = /** @class */ (function () {
+            function Controller($scope, dmDatabase, $routeParams) {
+                this.$scope = $scope;
+                this.dmDatabase = dmDatabase;
+                this.$routeParams = $routeParams;
+                dmDatabase.execute("Profile", true).then(function (response) {
+                    $scope.profile = response[0];
+                    dmDatabase.execute("Age", false).then(function (response) {
+                        $scope.ages = response;
+                        dmDatabase.execute("Country", false).then(function (response) {
+                            $scope.countries = response;
+                            dmDatabase.execute("Quality", true).then(function (response) {
+                                $scope.qualities = response;
+                            });
+                        });
+                    });
+                });
+            }
+            Controller.$inject = ["$scope", "dmDatabase", "$routeParams"];
+            return Controller;
+        }());
+        Profile.Controller = Controller;
+    })(Profile = DanceMatch.Profile || (DanceMatch.Profile = {}));
 })(DanceMatch || (DanceMatch = {}));
 angular.module("DanceMatch", ["ngRoute", "ngAnimate"])
     .config(DanceMatch.Config())
