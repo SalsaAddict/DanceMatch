@@ -26,13 +26,37 @@
 </head>
 <body ng-cloak>
     <div ng-controller="dmMenuController as menu">
-        <a href="#" class="btn btn-primary" ng-click="menu.dmAuth.toggle()">
-            <i class="fa fa-fw fa-facebook-official"></i>
-            <ng-switch on="menu.dmAuth.authenticated">
-                <span ng-switch-when="false">Login</span>
-                <span ng-switch-when="true">Logout</span>
-            </ng-switch>
-        </a>
+        <nav class="navbar fixed-top navbar-expand-md navbar-dark bg-primary">
+            <a class="navbar-brand" href="#">Dance Match</a>
+            <button class="navbar-toggler" type="button" ng-click="menu.toggle()">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="navbar-collapse" ng-class="{ 'collapse': menu.collapsed }">
+                <ul class="navbar-nav mr-auto" ng-show="menu.dmAuth.authenticated">
+                    <li class="nav-item">
+                        <a href="#!/profile" class="nav-link">Profile</a>
+                    </li>
+                </ul>
+                <div class="navbar-nav ml-auto">
+                    <span class="navbar-text">{{menu.dmAuth.user.name}}</span>
+                    <ul class="navbar-nav">
+                        <li>
+                            <a href="#" class="nav-link" ng-click="menu.dmAuth.toggle()">
+                                <i class="fa fa-fw fa-facebook-official"></i>
+                                <ng-switch on="menu.dmAuth.authenticated">
+                                    <span ng-switch-when="false">Login</span>
+                                    <span ng-switch-when="true">Logout</span>
+                                </ng-switch>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+
+    <div ng-controller="dmMenuController as menu">
     </div>
     <ng-view></ng-view>
     <script src="Scripts/angular.min.js"></script>
@@ -40,5 +64,5 @@
     <script src="Scripts/angular-animate.min.js"></script>
     <script src="Scripts/app/dancematch.min.js"></script>
     <script src="//connect.facebook.net/en_US/sdk.js"></script>
-    </body>
+</body>
 </html>

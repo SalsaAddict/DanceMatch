@@ -1,3 +1,4 @@
+IF OBJECT_ID(N'apiDemographicsUpdate', N'P') IS NOT NULL DROP PROCEDURE [apiDemographicsUpdate]
 IF OBJECT_ID(N'apiQuality', N'P') IS NOT NULL DROP PROCEDURE [apiQuality]
 IF OBJECT_ID(N'apiCountry', N'P') IS NOT NULL DROP PROCEDURE [apiCountry]
 IF OBJECT_ID(N'apiAge', N'P') IS NOT NULL DROP PROCEDURE [apiAge]
@@ -433,6 +434,20 @@ BEGIN
 	FROM [quality] q
 		LEFT JOIN [importance] i ON i.[userId] = @userId AND q.[id] = i.[qualityId]
 	ORDER BY q.[description]
+	RETURN
+END
+GO
+CREATE PROCEDURE [apiDemographicsUpdate](@userId NVARCHAR(25), @roleId BIT = NULL, @ageId TINYINT = NULL, @countryId NCHAR(2) = NULL)
+AS
+BEGIN
+	SET NOCOUNT ON
+	MERGE INTO [demographic] t
+	USING (VALUES (@userId, @roleId, @ageId, @countryId)) s ([userId], [roleId], [ageId], [countryId])
+	ON t.[userId] = s.[userId]
+	WHEN MATCHED THEN UPDATE SET [roleId] = s.[roleId], [ageId] = s.[ageId], [countryId] = s.[countryId]
+	WHEN NOT MATCHED BY TARGET THEN
+		INSERT ([userId], [roleId], [ageId], [countryId])
+		VALUES (s.[userId], s.[roleId], s.[ageId], s.[countryId]);
 	RETURN
 END
 GO

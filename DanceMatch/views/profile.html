@@ -8,7 +8,7 @@
                 <div class="form-group row">
                     <label for="roleId" class="col-sm-3 col-form-label">Preferred Role</label>
                     <div class="col-sm-9">
-                        <select ng-model="profile.roleId" class="form-control" required>
+                        <select ng-model="profile.roleId" class="form-control" required ng-change="ctrl.setDemographics()">
                             <option></option>
                             <option ng-value="0">Leader</option>
                             <option ng-value="1">Follower</option>
@@ -57,14 +57,14 @@
                     'text-warning': quality.ratingId === 0,
                     'text-success': quality.ratingId === 1
                     }"></th>
-                            <td class="text-center" ng-click="quality.ratingId=-1">
-                                <i class="fa fa-fw" ng-class="{ 'fa-square-o': quality.ratingId !== -1, 'fa-times text-danger': quality.ratingId === -1 }"></i>
+                            <td class="text-center" ng-click="ctrl.setImportance(quality, -1)">
+                                <i class="fa fa-fw" ng-class="{ 'fa-circle-o': quality.ratingId !== -1, 'fa-lg fa-circle text-danger': quality.ratingId === -1 }"></i>
                             </td>
-                            <td class="text-center" ng-click="quality.ratingId=0">
-                                <i class="fa fa-fw" ng-class="{ 'fa-square-o': quality.ratingId !== 0, 'fa-check text-warning': quality.ratingId === 0 }"></i>
+                            <td class="text-center" ng-click="ctrl.setImportance(quality, 0)">
+                                <i class="fa fa-fw" ng-class="{ 'fa-circle-o': quality.ratingId !== 0, 'fa-lg fa-circle text-warning': quality.ratingId === 0 }"></i>
                             </td>
-                            <td class="text-center" ng-click="quality.ratingId=1">
-                                <i class="fa fa-fw" ng-class="{ 'fa-square-o': quality.ratingId !== 1, 'fa-check text-success': quality.ratingId === 1 }"></i>
+                            <td class="text-center" ng-click="ctrl.setImportance(quality, 1)">
+                                <i class="fa fa-fw" ng-class="{ 'fa-circle-o': quality.ratingId !== 1, 'fa-lg fa-circle text-success': quality.ratingId === 1 }"></i>
                             </td>
                         </tr>
                     </tbody>

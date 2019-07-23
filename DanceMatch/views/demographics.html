@@ -1,0 +1,43 @@
+﻿<div class="container">
+    <div class="card shadow" ng-form="form" ng-class="{ 'was-validated': form.$submitted }">
+        <div class="card-header">
+            <h5 class="card-title">Demographics</h5>
+            <h6 class="card-subtitle">About you</h6>
+        </div>
+        <div class="card-body">
+            <div class="form-group row">
+                <label for="roleId" class="col-lg-3 col-form-label">Preferred Role</label>
+                <div class="col-lg-9">
+                    <select ng-model="demographics.roleId" class="custom-select" required>
+                        <option></option>
+                        <option ng-value="false">Leader</option>
+                        <option ng-value="true">Follower</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label for="roleId" class="col-lg-3 col-form-label">Age Group</label>
+                <div class="col-lg-9">
+                    <select ng-model="demographics.ageId" class="custom-select" required>
+                        <option></option>
+                        <option ng-repeat="age in ages | orderBy: 'id'" ng-value="age.id" ng-bind="age.description"></option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label for="roleId" class="col-lg-3 col-form-label">Country of Residence</label>
+                <div class="col-lg-9">
+                    <select ng-model="demographics.countryId" class="custom-select" required>
+                        <option></option>
+                        <option ng-repeat="country in countries | orderBy: 'name'" ng-value="country.id" ng-bind="country.name"></option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <fieldset ng-disabled="form.$pristine">
+                <button type="submit" class="btn btn-primary float-right" ng-click="ctrl.save()">Save</button>
+            </fieldset>
+        </div>
+    </div>
+</div>

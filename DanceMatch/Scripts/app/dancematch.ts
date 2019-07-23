@@ -1,6 +1,7 @@
 ﻿/// <reference path="../typings/angularjs/angular.d.ts" />
 /// <reference path="../typings/angularjs/angular-route.d.ts" />
-/// <reference path="../typings/facebook-js-sdk/facebook-js-sdk.d.ts" />
+
+declare var FB: any;
 
 namespace DanceMatch {
     export const debugEnabled: boolean = true;
@@ -12,7 +13,8 @@ namespace DanceMatch {
             $logProvider: ng.ILogProvider): void {
             $routeProvider
                 .when("/home", { name: "home", templateUrl: "views/home.html" })
-                .when("/profile/:userId", { name: "profile", templateUrl: "views/profile.html", controller: Profile.Controller, controllerAs: "ctrl" })
+                .when("/profile", { name: "profile", templateUrl: "views/demographics.html", controller: Demographics.Controller, controllerAs: "ctrl" })
+                //.when("/profile/:userId", { name: "profile", templateUrl: "views/profile.html", controller: Profile.Controller, controllerAs: "ctrl" })
                 .otherwise({ redirectTo: "/home" })
                 .caseInsensitiveMatch = true;
             $logProvider.debugEnabled(true);
@@ -34,40 +36,38 @@ namespace DanceMatch {
         event.stopPropagation();
     }
     export interface IUser { id: string; name: string; }
+    export interface IDemographics { roleId: boolean; ageId: number; countryId: string; }
+    export interface IAge { id: number; description: string; }
+    export interface ICountry { id: string; name: string; }
+    export interface IQuality { id: number; description: string; ratingId: number; }
     export namespace Database {
-        export interface IProcedure { name: string; parameters: IParameters }
+        export interface IProcedure { name: string; routeParams: ng.route.IRouteParamsService; parameters: IParameters; token: string; }
         export interface IParameters { [name: string]: any; }
-        export type TRouteParams = boolean | string[];
         export class Service {
-            static $inject: string[] = ["$http", "$q", "$routeParams", "$log"];
+            static $inject: string[] = ["$q", "$http", "$routeParams", "$log"];
             constructor(
-                private $http: ng.IHttpService,
                 private $q: ng.IQService,
-                private $routeParams: angular.route.IRouteParamsService,
+                private $http: ng.IHttpService,
+                private $routeParams: ng.route.IRouteParamsService,
                 private $log: ng.ILogService) { }
-            public execute<T>(name: string, routeParams: TRouteParams = true, parameters?: IParameters): ng.IPromise<T> {
-                let deferred: ng.IDeferred<T> = this.$q.defer();
-                let procedure: IProcedure = { name: name, parameters: {} };
-                if (angular.isArray(routeParams)) {
-                    angular.forEach(routeParams, (name: string): void => {
-                        procedure.parameters[name] = this.$routeParams[name];
-                    });
-                } else if (routeParams === true) {
-                    angular.forEach(this.$routeParams, (value: any, key: string): void => {
-                        procedure.parameters[key] = value;
-                    });
-                }
-                if (angular.isObject(parameters)) {
-                    angular.extend(procedure.parameters, parameters);
-                }
+            public execute<T>(name: string, parameters: IParameters = {}): ng.IPromise<T> {
+                let deferred: ng.IDeferred<T> = this.$q.defer(),
+                    procedure: IProcedure = {
+                        name: name,
+                        routeParams: this.$routeParams || {},
+                        parameters: parameters || {},
+                        token: FB.getAccessToken() || null
+                    };
                 this.$http.post("execute.ashx", procedure).then(
                     (response: ng.IHttpPromiseCallbackArg<T>): void => {
                         this.$log.debug("dm:execute:success", procedure, response);
                         deferred.resolve(response.data);
                     },
-                    (response: ng.IHttpPromiseCallbackArg<string>): void => {
-                        this.$log.debug("dm:execute:error", procedure, response);
-                        this.$log.error("dm:execute:error", "An unexpected error occurred.");
+                    (response: ng.IHttpPromiseCallbackArg<any>): void => {
+                        if (DanceMatch.debugEnabled)
+                            this.$log.error("dm:execute:error", procedure, response);
+                        else
+                            this.$log.error("dm:execute:error", "An unexpected error occurred.");
                         deferred.reject(response.data);
                     });
                 return deferred.promise;
@@ -77,21 +77,22 @@ namespace DanceMatch {
     export namespace Authentication {
         interface IWindowService extends ng.IWindowService { fbAsyncInit: Function; }
         export class Service {
-            static $inject: string[] = ["$rootScope", "$window", "dmDatabase", "$log"];
+            static $inject: string[] = ["$rootScope", "$window", "dmDatabase", "$location", "$log"];
             constructor(
                 $rootScope: ng.IScope,
                 $window: IWindowService,
                 dmDatabase: Database.Service,
+                private $location: ng.ILocationService,
                 private $log: ng.ILogService) {
                 $window.fbAsyncInit = (): void => {
-                    FB.init({ appId: fbAppId, version: fbGraphApiVersion, status: true });
-                    FB.Event.subscribe('auth.authResponseChange', (authResponse: fb.AuthResponse): void => {
+                    FB.init({ appId: fbAppId, version: fbGraphApiVersion, status: true, cookie: true });
+                    FB.Event.subscribe('auth.authResponseChange', (authResponse: any): void => {
                         this.$log.debug("dm:fb:authResponse", authResponse);
                         try {
                             if (authResponse.status === "connected") {
                                 FB.api("/me", { fields: ["id", "name"] }, (response: IUser) => {
                                     this.$log.debug("dm:fb:me", response);
-                                    dmDatabase.execute("Login", false, response).then(
+                                    dmDatabase.execute("Login", response).then(
                                         (): void => { this._user = response; },
                                         (): void => { delete this._user; });
                                 });
@@ -105,6 +106,10 @@ namespace DanceMatch {
             }
             private _user: IUser;
             public get user(): IUser { return this._user; }
+            public imageUrl(type: string): string {
+                if (!this.authenticated) return;
+                return "https://graph.facebook.com/" + this._user.id + "/picture?type=" + type || "normal";
+            }
             public get authenticated(): boolean { return angular.isDefined(this._user); }
             public toggle(event: ng.IAngularEvent): void {
                 cancel(event);
@@ -113,43 +118,100 @@ namespace DanceMatch {
                 else
                     FB.login(angular.noop);
             }
+            public goHomeIfNotAuthenticated(): boolean {
+                if (this.authenticated) return false;
+                this.$location.path("/home");
+                return true;
+            }
         }
     }
     export namespace Menu {
         export class Controller implements ng.IController {
-            static $inject: string[] = ["dmAuth"];
-            constructor(public dmAuth: Authentication.Service) { }
+            static $inject: string[] = ["dmAuth", "$rootScope"];
+            constructor(
+                public dmAuth: Authentication.Service,
+                private $rootScope: angular.IRootScopeService) {
+                $rootScope.$on("$routeChangeSuccess", (): void => { this.collapsed = true; });
+            }
+            public collapsed: boolean = true;
+            public toggle(): void { this.collapsed = !this.collapsed; }
             public $postLink(): void { }
         }
     }
+    export namespace Demographics {
+        interface IScope extends ng.IScope {
+            form: ng.IFormController;
+            demographics: IDemographics;
+            ages: IAge[];
+            countries: ICountry[];
+            qualities: IQuality[];
+        }
+        export class Controller {
+            static $inject: string[] = ["$scope", "dmAuth", "dmDatabase"];
+            constructor(
+                private $scope: IScope,
+                private dmAuth: Authentication.Service,
+                private dmDatabase: Database.Service) {
+                if (dmAuth.goHomeIfNotAuthenticated()) return;
+                dmDatabase.execute("Profile").then(
+                    (response: IDemographics[]): void => {
+                        $scope.demographics = response[0];
+                        dmDatabase.execute("Age").then(
+                            (response: IAge[]): void => {
+                                $scope.ages = response;
+                                dmDatabase.execute("Country").then(
+                                    (response: ICountry[]): void => {
+                                        $scope.countries = response;
+                                        dmDatabase.execute("Quality").then(
+                                            (response: IQuality[]): void => {
+                                                $scope.qualities = response;
+                                            })
+                                    })
+                            })
+                    });
+            }
+            public save(): void {
+                if (this.$scope.form.$valid) {
+                    this.dmDatabase.execute("DemographicsUpdate", this.$scope.demographics)
+                        .then((response: never): void => { this.$scope.form.$setPristine(); });
+                } else {
+                    this.$scope.form.$setSubmitted();
+                    return;
+                }
+            }
+        }
+    }
     export namespace Profile {
-        interface IProfile { roleId: boolean; ageId: number; countryId: string; }
-        interface IAge { id: number; description: string; }
-        interface ICountry { id: string; name: string; }
-        interface IImportance { id: number; description: string; ratingId: number; }
-        interface IScope extends ng.IScope { profile: IProfile; ages: IAge[]; countries: ICountry[]; qualities: IImportance[]; }
+        interface IScope extends ng.IScope { profile: IDemographics; ages: IAge[]; countries: ICountry[]; qualities: IQuality[]; }
         export class Controller {
             static $inject: string[] = ["$scope", "dmDatabase", "$routeParams"];
             constructor(
                 private $scope: IScope,
                 private dmDatabase: Database.Service,
                 private $routeParams: ng.route.IRouteParamsService) {
-                dmDatabase.execute("Profile", true).then(
-                    (response: IProfile[]): void => {
+                dmDatabase.execute("Profile").then(
+                    (response: IDemographics[]): void => {
                         $scope.profile = response[0];
-                        dmDatabase.execute("Age", false).then(
+                        dmDatabase.execute("Age").then(
                             (response: IAge[]): void => {
                                 $scope.ages = response;
-                                dmDatabase.execute("Country", false).then(
+                                dmDatabase.execute("Country").then(
                                     (response: ICountry[]): void => {
                                         $scope.countries = response;
-                                        dmDatabase.execute("Quality", true).then(
-                                            (response: IImportance[]): void => {
+                                        dmDatabase.execute("Quality").then(
+                                            (response: IQuality[]): void => {
                                                 $scope.qualities = response;
                                             })
                                     })
                             })
                     });
+            }
+            public setDemographics(): void {
+                this.dmDatabase.execute("SetDemographics", this.$scope.profile);
+            }
+            public setImportance(quality: IQuality, ratingId: number): void {
+                this.dmDatabase.execute("SetImportance", { qualityId: quality.id, ratingId: ratingId })
+                    .then((response: never): void => { quality.ratingId = ratingId; });
             }
         }
     }
