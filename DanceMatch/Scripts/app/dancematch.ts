@@ -1,12 +1,29 @@
 ﻿/// <reference path="../typings/angularjs/angular.d.ts" />
 /// <reference path="../typings/angularjs/angular-route.d.ts" />
+/// <reference path="../typings/facebook-js-sdk/facebook-js-sdk.d.ts" />
 
-declare var FB: any;
-
-namespace DanceMatch {
+namespace Application { // Global Variables
     export const debugEnabled: boolean = true;
     export const fbAppId: string = "478292336279902";
     export const fbGraphApiVersion: string = "v3.3";
+    export function cancel(event: ng.IAngularEvent): void {
+        if (angular.isUndefined(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+    }
+}
+
+namespace Application { // Interfaces
+    export interface IUser { id: string; name: string; accessToken: string; }
+    export interface IDemographics { roleId: boolean; ageId: number; countryId: string; }
+    export interface IAge { id: number; description: string; }
+    export interface ICountry { id: string; name: string; }
+    export interface IQuality { id: number; description: string; ratingId: number; }
+    export interface IProcedure { name: string; routeParams: ng.route.IRouteParamsService; parameters: IParameters; token: string; }
+    export interface IParameters { [name: string]: any; }
+}
+
+namespace Application { // Config & Run
     export function Config(): ng.Injectable<Function> {
         let config: Function = function (
             $routeProvider: ng.route.IRouteProvider,
@@ -14,7 +31,6 @@ namespace DanceMatch {
             $routeProvider
                 .when("/home", { name: "home", templateUrl: "views/home.html" })
                 .when("/profile", { name: "profile", templateUrl: "views/demographics.html", controller: Demographics.Controller, controllerAs: "ctrl" })
-                //.when("/profile/:userId", { name: "profile", templateUrl: "views/profile.html", controller: Profile.Controller, controllerAs: "ctrl" })
                 .otherwise({ redirectTo: "/home" })
                 .caseInsensitiveMatch = true;
             $logProvider.debugEnabled(true);
@@ -24,25 +40,15 @@ namespace DanceMatch {
     }
     export function Run(): ng.Injectable<Function> {
         let run: ng.Injectable<Function> = function (
+            $location: ng.ILocationService,
             $log: ng.ILogService): void {
+            $location.path("/login");
             $log.debug("dm:run");
         };
-        run.$inject = ["$log"];
+        run.$inject = ["$location", "$log"];
         return run;
     }
-    function cancel(event: ng.IAngularEvent): void {
-        if (angular.isUndefined(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    export interface IUser { id: string; name: string; }
-    export interface IDemographics { roleId: boolean; ageId: number; countryId: string; }
-    export interface IAge { id: number; description: string; }
-    export interface ICountry { id: string; name: string; }
-    export interface IQuality { id: number; description: string; ratingId: number; }
     export namespace Database {
-        export interface IProcedure { name: string; routeParams: ng.route.IRouteParamsService; parameters: IParameters; token: string; }
-        export interface IParameters { [name: string]: any; }
         export class Service {
             static $inject: string[] = ["$q", "$http", "$routeParams", "$log"];
             constructor(
@@ -56,7 +62,7 @@ namespace DanceMatch {
                         name: name,
                         routeParams: this.$routeParams || {},
                         parameters: parameters || {},
-                        token: FB.getAccessToken() || null
+                        token: null
                     };
                 this.$http.post("execute.ashx", procedure).then(
                     (response: ng.IHttpPromiseCallbackArg<T>): void => {
@@ -64,7 +70,7 @@ namespace DanceMatch {
                         deferred.resolve(response.data);
                     },
                     (response: ng.IHttpPromiseCallbackArg<any>): void => {
-                        if (DanceMatch.debugEnabled)
+                        if (Application.debugEnabled)
                             this.$log.error("dm:execute:error", procedure, response);
                         else
                             this.$log.error("dm:execute:error", "An unexpected error occurred.");
@@ -79,50 +85,42 @@ namespace DanceMatch {
         export class Service {
             static $inject: string[] = ["$rootScope", "$window", "dmDatabase", "$location", "$log"];
             constructor(
-                $rootScope: ng.IScope,
-                $window: IWindowService,
-                dmDatabase: Database.Service,
+                private $rootScope: ng.IScope,
+                private $window: IWindowService,
+                private dmDatabase: Database.Service,
                 private $location: ng.ILocationService,
                 private $log: ng.ILogService) {
                 $window.fbAsyncInit = (): void => {
-                    FB.init({ appId: fbAppId, version: fbGraphApiVersion, status: true, cookie: true });
-                    FB.Event.subscribe('auth.authResponseChange', (authResponse: any): void => {
+                    FB.init({ appId: fbAppId, version: fbGraphApiVersion, status: true });
+                    FB.Event.subscribe('auth.authResponseChange', (authResponse: fb.AuthResponse): void => {
                         this.$log.debug("dm:fb:authResponse", authResponse);
                         try {
                             if (authResponse.status === "connected") {
                                 FB.api("/me", { fields: ["id", "name"] }, (response: IUser) => {
-                                    this.$log.debug("dm:fb:me", response);
+                                    this.$log.debug("dm:fb:me2", response);
                                     dmDatabase.execute("Login", response).then(
-                                        (): void => { this._user = response; },
-                                        (): void => { delete this._user; });
+                                        (): void => {
+                                            response.accessToken = authResponse.authResponse.accessToken;
+                                            this._login(response);
+                                        },
+                                        (): void => { this._logout(); });
                                 });
-                            } else { delete this._user; }
+                            } else { this._logout(); }
                         }
-                        catch (ex) { delete this._user; }
+                        catch (ex) { this._logout(); }
                         finally { $rootScope.$apply(); }
                     });
                     $log.debug("dm:fb:init");
                 };
             }
-            private _user: IUser;
-            public get user(): IUser { return this._user; }
-            public imageUrl(type: string): string {
-                if (!this.authenticated) return;
-                return "https://graph.facebook.com/" + this._user.id + "/picture?type=" + type || "normal";
-            }
-            public get authenticated(): boolean { return angular.isDefined(this._user); }
-            public toggle(event: ng.IAngularEvent): void {
-                cancel(event);
-                if (this.authenticated)
-                    FB.logout(angular.noop);
-                else
-                    FB.login(angular.noop);
-            }
-            public goHomeIfNotAuthenticated(): boolean {
-                if (this.authenticated) return false;
-                this.$location.path("/home");
-                return true;
-            }
+            private _login(user: IUser): void { this.$window.localStorage.setItem("user", angular.toJson(user, false)); }
+            private _logout(): void { this.$window.localStorage.removeItem("user"); }
+            public get authenticated(): boolean { return this.$window.localStorage.getItem("user") != null; }
+            public get user(): IUser { return (this.authenticated) ? angular.fromJson(this.$window.localStorage.getItem("user")) : null; }
+            public get name(): string { return (this.authenticated) ? this.user.name : null; }
+            public get accessToken(): string { return (this.authenticated) ? this.user.accessToken : null; }
+            public toggle(event: ng.IAngularEvent): void { cancel(event); if (this.authenticated) FB.logout(angular.noop); else FB.login(angular.noop); }
+            public goHomeIfNotAuthenticated(): boolean { if (this.authenticated) return false; this.$location.path("/home"); return true; }
         }
     }
     export namespace Menu {
@@ -218,8 +216,8 @@ namespace DanceMatch {
 }
 
 angular.module("DanceMatch", ["ngRoute", "ngAnimate"])
-    .config(DanceMatch.Config())
-    .run(DanceMatch.Run())
-    .service("dmDatabase", DanceMatch.Database.Service)
-    .service("dmAuth", DanceMatch.Authentication.Service)
-    .controller("dmMenuController", DanceMatch.Menu.Controller);
+    .config(Application.Config())
+    .run(Application.Run())
+    .service("dmDatabase", Application.Database.Service)
+    .service("dmAuth", Application.Authentication.Service)
+    .controller("dmMenuController", Application.Menu.Controller);

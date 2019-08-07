@@ -1,16 +1,25 @@
 /// <reference path="../typings/angularjs/angular.d.ts" />
 /// <reference path="../typings/angularjs/angular-route.d.ts" />
-var DanceMatch;
-(function (DanceMatch) {
-    DanceMatch.debugEnabled = true;
-    DanceMatch.fbAppId = "478292336279902";
-    DanceMatch.fbGraphApiVersion = "v3.3";
+/// <reference path="../typings/facebook-js-sdk/facebook-js-sdk.d.ts" />
+var Application;
+(function (Application) {
+    Application.debugEnabled = true;
+    Application.fbAppId = "478292336279902";
+    Application.fbGraphApiVersion = "v3.3";
+    function cancel(event) {
+        if (angular.isUndefined(event))
+            return;
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    Application.cancel = cancel;
+})(Application || (Application = {}));
+(function (Application) {
     function Config() {
         var config = function ($routeProvider, $logProvider) {
             $routeProvider
                 .when("/home", { name: "home", templateUrl: "views/home.html" })
                 .when("/profile", { name: "profile", templateUrl: "views/demographics.html", controller: Demographics.Controller, controllerAs: "ctrl" })
-                //.when("/profile/:userId", { name: "profile", templateUrl: "views/profile.html", controller: Profile.Controller, controllerAs: "ctrl" })
                 .otherwise({ redirectTo: "/home" })
                 .caseInsensitiveMatch = true;
             $logProvider.debugEnabled(true);
@@ -18,21 +27,16 @@ var DanceMatch;
         config.$inject = ["$routeProvider", "$logProvider"];
         return config;
     }
-    DanceMatch.Config = Config;
+    Application.Config = Config;
     function Run() {
-        var run = function ($log) {
+        var run = function ($location, $log) {
+            $location.path("/login");
             $log.debug("dm:run");
         };
-        run.$inject = ["$log"];
+        run.$inject = ["$location", "$log"];
         return run;
     }
-    DanceMatch.Run = Run;
-    function cancel(event) {
-        if (angular.isUndefined(event))
-            return;
-        event.preventDefault();
-        event.stopPropagation();
-    }
+    Application.Run = Run;
     var Database;
     (function (Database) {
         var Service = /** @class */ (function () {
@@ -49,13 +53,13 @@ var DanceMatch;
                     name: name,
                     routeParams: this.$routeParams || {},
                     parameters: parameters || {},
-                    token: FB.getAccessToken() || null
+                    token: null
                 };
                 this.$http.post("execute.ashx", procedure).then(function (response) {
                     _this.$log.debug("dm:execute:success", procedure, response);
                     deferred.resolve(response.data);
                 }, function (response) {
-                    if (DanceMatch.debugEnabled)
+                    if (Application.debugEnabled)
                         _this.$log.error("dm:execute:error", procedure, response);
                     else
                         _this.$log.error("dm:execute:error", "An unexpected error occurred.");
@@ -67,31 +71,37 @@ var DanceMatch;
             return Service;
         }());
         Database.Service = Service;
-    })(Database = DanceMatch.Database || (DanceMatch.Database = {}));
+    })(Database = Application.Database || (Application.Database = {}));
     var Authentication;
     (function (Authentication) {
         var Service = /** @class */ (function () {
             function Service($rootScope, $window, dmDatabase, $location, $log) {
                 var _this = this;
+                this.$rootScope = $rootScope;
+                this.$window = $window;
+                this.dmDatabase = dmDatabase;
                 this.$location = $location;
                 this.$log = $log;
                 $window.fbAsyncInit = function () {
-                    FB.init({ appId: DanceMatch.fbAppId, version: DanceMatch.fbGraphApiVersion, status: true, cookie: true });
+                    FB.init({ appId: Application.fbAppId, version: Application.fbGraphApiVersion, status: true });
                     FB.Event.subscribe('auth.authResponseChange', function (authResponse) {
                         _this.$log.debug("dm:fb:authResponse", authResponse);
                         try {
                             if (authResponse.status === "connected") {
                                 FB.api("/me", { fields: ["id", "name"] }, function (response) {
-                                    _this.$log.debug("dm:fb:me", response);
-                                    dmDatabase.execute("Login", response).then(function () { _this._user = response; }, function () { delete _this._user; });
+                                    _this.$log.debug("dm:fb:me2", response);
+                                    dmDatabase.execute("Login", response).then(function () {
+                                        response.accessToken = authResponse.authResponse.accessToken;
+                                        _this._login(response);
+                                    }, function () { _this._logout(); });
                                 });
                             }
                             else {
-                                delete _this._user;
+                                _this._logout();
                             }
                         }
                         catch (ex) {
-                            delete _this._user;
+                            _this._logout();
                         }
                         finally {
                             $rootScope.$apply();
@@ -100,23 +110,30 @@ var DanceMatch;
                     $log.debug("dm:fb:init");
                 };
             }
-            Object.defineProperty(Service.prototype, "user", {
-                get: function () { return this._user; },
+            Service.prototype._login = function (user) { this.$window.localStorage.setItem("user", angular.toJson(user, false)); };
+            Service.prototype._logout = function () { this.$window.localStorage.removeItem("user"); };
+            Object.defineProperty(Service.prototype, "authenticated", {
+                get: function () { return this.$window.localStorage.getItem("user") != null; },
                 enumerable: true,
                 configurable: true
             });
-            Service.prototype.imageUrl = function (type) {
-                if (!this.authenticated)
-                    return;
-                return "https://graph.facebook.com/" + this._user.id + "/picture?type=" + type || "normal";
-            };
-            Object.defineProperty(Service.prototype, "authenticated", {
-                get: function () { return angular.isDefined(this._user); },
+            Object.defineProperty(Service.prototype, "user", {
+                get: function () { return (this.authenticated) ? angular.fromJson(this.$window.localStorage.getItem("user")) : null; },
+                enumerable: true,
+                configurable: true
+            });
+            Object.defineProperty(Service.prototype, "name", {
+                get: function () { return (this.authenticated) ? this.user.name : null; },
+                enumerable: true,
+                configurable: true
+            });
+            Object.defineProperty(Service.prototype, "accessToken", {
+                get: function () { return (this.authenticated) ? this.user.accessToken : null; },
                 enumerable: true,
                 configurable: true
             });
             Service.prototype.toggle = function (event) {
-                cancel(event);
+                Application.cancel(event);
                 if (this.authenticated)
                     FB.logout(angular.noop);
                 else
@@ -132,7 +149,7 @@ var DanceMatch;
             return Service;
         }());
         Authentication.Service = Service;
-    })(Authentication = DanceMatch.Authentication || (DanceMatch.Authentication = {}));
+    })(Authentication = Application.Authentication || (Application.Authentication = {}));
     var Menu;
     (function (Menu) {
         var Controller = /** @class */ (function () {
@@ -149,7 +166,7 @@ var DanceMatch;
             return Controller;
         }());
         Menu.Controller = Controller;
-    })(Menu = DanceMatch.Menu || (DanceMatch.Menu = {}));
+    })(Menu = Application.Menu || (Application.Menu = {}));
     var Demographics;
     (function (Demographics) {
         var Controller = /** @class */ (function () {
@@ -187,7 +204,7 @@ var DanceMatch;
             return Controller;
         }());
         Demographics.Controller = Controller;
-    })(Demographics = DanceMatch.Demographics || (DanceMatch.Demographics = {}));
+    })(Demographics = Application.Demographics || (Application.Demographics = {}));
     var Profile;
     (function (Profile) {
         var Controller = /** @class */ (function () {
@@ -219,12 +236,12 @@ var DanceMatch;
             return Controller;
         }());
         Profile.Controller = Controller;
-    })(Profile = DanceMatch.Profile || (DanceMatch.Profile = {}));
-})(DanceMatch || (DanceMatch = {}));
+    })(Profile = Application.Profile || (Application.Profile = {}));
+})(Application || (Application = {}));
 angular.module("DanceMatch", ["ngRoute", "ngAnimate"])
-    .config(DanceMatch.Config())
-    .run(DanceMatch.Run())
-    .service("dmDatabase", DanceMatch.Database.Service)
-    .service("dmAuth", DanceMatch.Authentication.Service)
-    .controller("dmMenuController", DanceMatch.Menu.Controller);
+    .config(Application.Config())
+    .run(Application.Run())
+    .service("dmDatabase", Application.Database.Service)
+    .service("dmAuth", Application.Authentication.Service)
+    .controller("dmMenuController", Application.Menu.Controller);
 //# sourceMappingURL=dancematch.js.map
